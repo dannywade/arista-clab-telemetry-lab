@@ -1,0 +1,87 @@
+# Copyright 2020 Nokia
+# Licensed under the BSD 3-Clause License.
+# SPDX-License-Identifier: BSD-3-Clause
+
+username: admin
+password: admin
+port: 6030
+timeout: 10s
+skip-verify: true
+encoding: json_ietf
+
+targets:
+  eos1:
+    insecure: true
+  eos2:
+    insecure: true
+
+subscriptions:
+  eos_bgp_neighbors:
+    paths:
+      - /network-instances/network-instance[name=default]/protocols/protocol[name=BGP]/bgp/neighbors
+    mode: stream
+    stream-mode: on_change
+    sample-interval: 5s
+
+  eos_cpu:
+    paths:
+      - components/component/cpu
+    mode: stream
+    stream-mode: sample
+    sample-interval: 5s
+
+  eos_mem:
+    paths:
+      - components/component/state/memory/
+    mode: stream
+    stream-mode: sample
+    sample-interval: 5s
+
+  eos_interface_stats:
+    paths:
+      - /interfaces/interface[name=*]/state/counters
+    mode: stream
+    stream-mode: sample
+    sample-interval: 5s
+
+
+outputs:
+  prom:
+    type: prometheus
+    listen: :9273
+    path: /metrics
+    metric-prefix: gnmic
+    append-subscription-name: true
+    export-timestamps: true
+    debug: false
+    event-processors:
+      - trim-prefixes
+      - up-down-map
+  # stdout:
+  #   type: file
+  #   file-type: stdout
+  #   event-processors:
+  #     - proc-convert-strings-to-int
+  #     - trim-prefixes
+
+processors:
+  trim-prefixes:
+    event-strings:
+      value-names:
+        - ".*"
+      transforms:
+        - path-base:
+            apply-on: "name"
+  up-down-map:
+    event-strings:
+      value-names:
+        - oper-state
+      transforms:
+        - replace:
+            apply-on: "value"
+            old: "up"
+            new: "1"
+        - replace:
+            apply-on: "value"
+            old: "down"
+            new: "0"

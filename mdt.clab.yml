@@ -1,0 +1,95 @@
+name: mdt-demo
+prefix: ""
+
+mgmt:
+  network: custom-mgmt-net
+  mtu: 1500
+  ipv4-subnet: 172.100.100.0/24
+  ipv4-range: 172.100.100.128/25
+
+topology:
+  kinds:
+    ceos:
+      image: ceos:4.28.4M
+  nodes:
+    eos1:
+      kind: ceos
+      startup-config: configs/eos1-startup-config.cfg
+      ports:
+        - 8080:22
+    eos2:
+      kind: ceos
+      startup-config: configs/eos2-startup-config.cfg
+      ports:
+        - 8081:22
+
+
+    ### CLIENTS TO GENERATE TRAFFIC ###
+    client1:
+      kind: linux
+      image: ghcr.io/hellt/network-multitool
+      mgmt-ipv4: 172.100.100.200
+      exec:
+        - ip address add 172.17.0.2/24 dev eth1
+        - ip route add 172.18.0.0/24 via 172.17.0.1
+        - iperf3 -s -p 5201 -D > iperf3.log # Run iperf3 in server mode on port 5201
+      group: client
+
+    client2:
+      kind: linux
+      image: ghcr.io/hellt/network-multitool
+      mgmt-ipv4: 172.100.100.201
+      binds:
+        - configs/client2:/config
+      exec:
+        - ip address add 172.18.0.2/24 dev eth1
+        - ip route add 172.17.0.0/24 via 172.18.0.1
+        - route add default gw 172.18.0.1 eth1
+      group: client
+
+    ### TELEMETRY STACK ###
+    gnmic:
+      kind: linux
+      mgmt-ipv4: 172.100.100.150
+      image: ghcr.io/openconfig/gnmic:0.30.0
+      binds:
+        - configs/gnmic-config.yml:/gnmic-config.yml:ro
+      cmd: --config gnmic-config.yml --log subscribe
+      group: mdt-stack
+
+    prometheus:
+      kind: linux
+      mgmt-ipv4: 172.100.100.151
+      image: prom/prometheus:v2.37.8
+      binds:
+        - configs/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      cmd: --config.file=/etc/prometheus/prometheus.yml
+      ports:
+        - 9090:9090
+      group: mdt-stack
+
+    grafana:
+      kind: linux
+      mgmt-ipv4: 172.100.100.152
+      image: grafana/grafana:9.5.2
+      binds:
+        - configs/grafana/datasource.yml:/etc/grafana/provisioning/datasources/datasource.yaml:ro
+        - configs/grafana/dashboards.yml:/etc/grafana/provisioning/dashboards/dashboards.yaml:ro
+        - configs/grafana/dashboards:/var/lib/grafana/dashboards
+        # - icons/network:/usr/share/grafana/public/img/icons/custom
+      ports:
+        - 3000:3000
+      env:
+        GF_INSTALL_PLUGINS: https://algenty.github.io/flowcharting-repository/archives/agenty-flowcharting-panel-1.0.0d.220606199-SNAPSHOT.zip;agenty-flowcharting-panel
+        # env vars to enable anonymous access
+        GF_ORG_ROLE: "Admin"
+        GF_ORG_NAME: "Main Org"
+        GF_AUTH_ANONYMOUS_ENABLED: "true"
+        GF_AUTH_ANONYMOUS: "true"
+      group: mdt-stack
+
+
+  links:
+    - endpoints: ["eos1:eth1", "eos2:eth1"]
+    - endpoints: ["eos1:eth2", "client1:eth1"]
+    - endpoints: ["eos2:eth2", "client2:eth1"]
