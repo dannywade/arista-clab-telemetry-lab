@@ -1,2 +1,3 @@
 clab-mdt-demo
 *.bak
+.DS_Store
