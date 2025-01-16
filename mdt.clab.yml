@@ -10,7 +10,7 @@ mgmt:
 topology:
   kinds:
     ceos:
-      image: ceos:4.28.4M
+      image: ceos:4.31.5M
   nodes:
     eos1:
       kind: ceos
